@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./.seed-build",
+    "rootDir": "./prisma",
+    "module": "commonjs",
+    "target": "ES2022",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["prisma/seed.ts"],
+  "exclude": ["node_modules", "dist", "src", "test"]
+}
