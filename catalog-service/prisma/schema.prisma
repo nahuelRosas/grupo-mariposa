@@ -1,0 +1,79 @@
+// Prisma schema for Service A (Catalog, db_catalog).
+// The Loan model is a *local shadow* of the loan; the source of truth
+// for loan state lives in Service B (db_loans). The local row lets
+// us enforce stock decrements atomically with the saga compensation.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         Role     @default(USER)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  loans        Loan[]
+
+  @@index([email])
+  @@index([role, isActive])
+  @@map("users")
+}
+
+model Book {
+  id             String   @id @default(uuid()) @db.Uuid
+  isbn           String   @unique @db.VarChar(20)
+  title          String   @db.VarChar(255)
+  author         String   @db.VarChar(255)
+  publisher      String?  @db.VarChar(255)
+  publishedYear  Int?     @map("published_year")
+  genre          String?  @db.VarChar(100)
+  totalStock     Int      @default(0) @map("total_stock")
+  availableStock Int      @default(0) @map("available_stock")
+  description    String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  loans          Loan[]
+
+  @@index([isbn])
+  @@index([title])
+  @@index([author])
+  @@map("books")
+}
+
+model Loan {
+  id           String   @id @default(uuid()) @db.Uuid
+  // remoteLoanId is set after Service B returns a loanId; null while PENDING.
+  remoteLoanId String?  @unique @map("remote_loan_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  bookId       String   @map("book_id") @db.Uuid
+  // PENDING | ACTIVE | ROLLED_BACK
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+  book Book @relation(fields: [bookId], references: [id])
+
+  @@index([userId])
+  @@index([bookId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("loans")
+}
