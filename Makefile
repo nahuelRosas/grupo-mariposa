@@ -119,7 +119,7 @@ format-check: install-tools  ## Verify formatting (fails if any file is not form
 		echo "[format-check] gofmt issues:"; cat /tmp/gofmt-out.txt; exit 1; \
 	fi
 	@if [ -x "$(GOFUMPT)" ]; then \
-		$(GOFUMPT) -l -extra . > /tmp/gofumpt-out.txt; \
+		cd loan-service && $(GOFUMPT) -l -extra . > /tmp/gofumpt-out.txt; \
 		if [ -s /tmp/gofumpt-out.txt ]; then \
 			echo "[format-check] gofumpt issues:"; cat /tmp/gofumpt-out.txt; exit 1; \
 		fi; \
