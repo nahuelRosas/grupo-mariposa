@@ -1,0 +1,18 @@
+services:
+  catalog:
+    volumes:
+      - ./catalog-service/src:/app/src
+      - ./catalog-service/prisma:/app/prisma
+    environment:
+      NODE_ENV: development
+    command: ["npx", "nest", "start", "--watch"]
+
+  loans:
+    volumes:
+      - ./loan-service:/src/loan-service
+      - ./proto:/src/proto
+    command: ["sh", "-c", "while true; do go run ./cmd/server; echo 'restarting in 2s'; sleep 2; done"]
+
+  postgres:
+    ports:
+      - "5433:5432"

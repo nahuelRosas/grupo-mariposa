@@ -1,0 +1,101 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: library-postgres
+    restart: unless-stopped
+    entrypoint: ["/usr/local/bin/postgres-entrypoint.sh"]
+    command: ["postgres"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-library}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-library_dev_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql.template:/tmp/init.sql.template:ro
+      - ./scripts/postgres-entrypoint.sh:/usr/local/bin/postgres-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-library} -d db_catalog"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - library-net
+
+  catalog:
+    build:
+      context: .
+      dockerfile: catalog-service/Dockerfile
+    container_name: catalog-service
+    restart: unless-stopped
+    env_file:
+      - .env
+      - ./catalog-service/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      LOAN_SERVICE_URL: http://loans:8080
+      LOAN_SERVICE_TIMEOUT_MS: 3000
+      LOAN_TRANSPORT: http
+      LOAN_SERVICE_GRPC: loans:50051
+      GRPC_PROTO_PATH: ./proto/library.proto
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    networks:
+      - library-net
+
+  loans:
+    build:
+      context: .
+      dockerfile: loan-service/Dockerfile
+    container_name: loan-service
+    restart: unless-stopped
+    env_file:
+      - .env
+      - ./loan-service/.env
+    environment:
+      APP_ENV: production
+      HTTP_PORT: 8080
+      GRPC_PORT: 50051
+      CATALOG_URL: http://catalog:3000
+      CATALOG_TIMEOUT_MS: 2000
+      CATALOG_TRANSPORT: http
+      CATALOG_GRPC_ADDR: catalog:50052
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "/app/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    networks:
+      - library-net
+
+networks:
+  library-net:
+    name: library-net
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: library_postgres_data
