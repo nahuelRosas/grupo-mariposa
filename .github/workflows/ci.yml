@@ -44,16 +44,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate docker-compose.yml + override
-        run: |
-          touch .env catalog-service/.env loan-service/.env
-          docker compose -f docker-compose.yml config > /dev/null
-          docker compose -f docker-compose.yml -f docker-compose.override.yml config > /dev/null
-          echo "compose config OK"
+        run: make validate
 
       - name: Run bash script tests
-        run: |
-          bash scripts/test-gen-env.sh
-          bash scripts/test-postgres-entrypoint.sh
+        run: make test-scripts
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
@@ -106,25 +100,18 @@ jobs:
             --go-grpc_out=proto/gen --go-grpc_opt=paths=source_relative \
             -I ../proto ../proto/library.proto
 
-      - name: "Service B: download deps"
-        working-directory: loan-service
-        run: go mod download
+      - name: "Install deps"
+        run: make install
 
-      - name: "Service B: gofmt -l"
-        working-directory: loan-service
-        run: |
-          gofmt_out=$(gofmt -l .)
-          if [ -n "$gofmt_out" ]; then
-            echo "gofmt issues:"; echo "$gofmt_out"; exit 1
-          fi
+      - name: "Format check"
+        run: make format-check
 
       - name: "Service B: go vet"
         working-directory: loan-service
         run: go vet ./...
 
       - name: "Service B: test"
-        working-directory: loan-service
-        run: go test ./... -race -count=1
+        run: make test-go
 
       - name: "Service B: build"
         working-directory: loan-service
@@ -145,14 +132,6 @@ jobs:
           MIGRATIONS_PATH: file://./migrations
         run: ./bin/migrate up
 
-      - name: "Service A: install deps"
-        working-directory: catalog-service
-        run: npm ci
-
-      - name: "Service A: prettier format check"
-        working-directory: catalog-service
-        run: npm run format:check
-
       - name: "Service A: prisma generate"
         working-directory: catalog-service
         env:
@@ -166,20 +145,18 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: "Service A: test"
-        working-directory: catalog-service
         env:
           DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
           LOAN_SERVICE_URL: http://127.0.0.1:8080
           JWT_SECRET: ci-test-secret-32-bytes-minimum-please
-        run: npm test -- --runInBand
+        run: make test-node
 
       - name: "Service A: e2e test"
-        working-directory: catalog-service
         env:
           DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
           LOAN_SERVICE_URL: http://127.0.0.1:8080
           JWT_SECRET: ci-test-secret-32-bytes-minimum-please
-        run: npm run test:e2e
+        run: make test-e2e
 
       - name: "Service A: build"
         working-directory: catalog-service
