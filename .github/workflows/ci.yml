@@ -88,14 +88,14 @@ jobs:
             bash ./scripts/postgres-entrypoint.sh
           PGPASSWORD=library_dev_pw psql -h 127.0.0.1 -U library -d postgres -f /tmp/init.sql
 
-      - name: Service B: install Go protoc plugins
+      - name: "Service B: install Go protoc plugins"
         working-directory: loan-service
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
           echo "$HOME/go/bin" >> $GITHUB_PATH
 
-      - name: Service B: generate proto
+      - name: "Service B: generate proto"
         working-directory: loan-service
         run: |
           mkdir -p proto/gen
@@ -104,11 +104,11 @@ jobs:
             --go-grpc_out=proto/gen --go-grpc_opt=paths=source_relative \
             -I ../proto ../proto/library.proto
 
-      - name: Service B: download deps
+      - name: "Service B: download deps"
         working-directory: loan-service
         run: go mod download
 
-      - name: Service B: gofmt -l
+      - name: "Service B: gofmt -l"
         working-directory: loan-service
         run: |
           gofmt_out=$(gofmt -l .)
@@ -116,22 +116,22 @@ jobs:
             echo "gofmt issues:"; echo "$gofmt_out"; exit 1
           fi
 
-      - name: Service B: go vet
+      - name: "Service B: go vet"
         working-directory: loan-service
         run: go vet ./...
 
-      - name: Service B: test
+      - name: "Service B: test"
         working-directory: loan-service
         run: go test ./... -race -count=1
 
-      - name: Service B: build
+      - name: "Service B: build"
         working-directory: loan-service
         run: |
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/loan-service ./cmd/server
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/healthcheck ./cmd/healthcheck
           CGO_ENABLED=0 go build -tags 'postgres' -trimpath -ldflags="-s -w" -o bin/migrate ./cmd/migrate
 
-      - name: Service B: apply migrations
+      - name: "Service B: apply migrations"
         working-directory: loan-service
         env:
           DB_HOST: 127.0.0.1
@@ -143,27 +143,27 @@ jobs:
           MIGRATIONS_PATH: file://./migrations
         run: ./bin/migrate up
 
-      - name: Service A: install deps
+      - name: "Service A: install deps"
         working-directory: catalog-service
         run: npm ci
 
-      - name: Service A: prettier format check
+      - name: "Service A: prettier format check"
         working-directory: catalog-service
         run: npm run format:check
 
-      - name: Service A: prisma generate
+      - name: "Service A: prisma generate"
         working-directory: catalog-service
         env:
           DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
         run: npx prisma generate
 
-      - name: Service A: prisma migrate deploy
+      - name: "Service A: prisma migrate deploy"
         working-directory: catalog-service
         env:
           DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
         run: npx prisma migrate deploy
 
-      - name: Service A: test
+      - name: "Service A: test"
         working-directory: catalog-service
         env:
           DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
@@ -171,7 +171,7 @@ jobs:
           JWT_SECRET: ci-test-secret-32-bytes-minimum-please
         run: npm test -- --runInBand
 
-      - name: Service A: e2e test
+      - name: "Service A: e2e test"
         working-directory: catalog-service
         env:
           DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
@@ -179,7 +179,7 @@ jobs:
           JWT_SECRET: ci-test-secret-32-bytes-minimum-please
         run: npm run test:e2e
 
-      - name: Service A: build
+      - name: "Service A: build"
         working-directory: catalog-service
         run: npm run build
 
