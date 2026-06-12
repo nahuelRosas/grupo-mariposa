@@ -45,6 +45,7 @@ jobs:
 
       - name: Validate docker-compose.yml + override
         run: |
+          touch .env catalog-service/.env loan-service/.env
           docker compose -f docker-compose.yml config > /dev/null
           docker compose -f docker-compose.yml -f docker-compose.override.yml config > /dev/null
           echo "compose config OK"
