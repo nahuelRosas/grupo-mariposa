@@ -1,0 +1,145 @@
+// proto/library.proto
+// Contract implemented by loan-service (Loan Service).
+// Consumed by catalog-service (Catalog) via generated TS stubs.
+//
+// Path:       proto/library.proto
+// Go package: github.com/example/loan-service/proto/gen;librarypb
+// TS package: library.v1
+//
+// Codegen (run from repo root):
+//   # Go
+//   protoc --go_out=loan-service/proto/gen \
+//          --go_opt=paths=source_relative \
+//          --go-grpc_out=loan-service/proto/gen \
+//          --go-grpc_opt=paths=source_relative \
+//          -I proto proto/library.proto
+//   # TypeScript
+//   # catalog-service uses @grpc/proto-loader at runtime; no codegen needed.
+
+syntax = "proto3";
+
+package library.v1;
+
+option go_package = "github.com/example/loan-service/proto/gen;librarypb";
+option java_multiple_files = true;
+option java_package = "library.v1";
+
+// LoanService is owned by loan-service and invoked by catalog-service.
+//
+// The "book_id" used by catalog-service refers to a logical book id that is
+// shared across services. catalog-service is the system of record for catalog
+// metadata; loan-service owns stock/loan state and only needs book_id to
+// reason about availability. We deliberately keep the contract minimal
+// to avoid coupling catalog fields into the loan domain.
+//
+// BONUS: this service is a strict superset of the HTTP contract — every
+// method has an equivalent HTTP endpoint in loan-service (see
+// /loans, /loans/{id}/return, /loans/{id}, /availability/{bookId}).
+// The HTTP path is the primary inter-service transport (per spec);
+// gRPC is kept as a typed-fast-path bonus (ADR-2).
+service LoanService {
+  // RegisterLoan attempts to create a new loan for a (book, user) pair.
+  // loan-service enforces stock invariants and returns status="rejected"
+  // with a human-readable message if no stock is available. The caller
+  // should treat "rejected" as a normal business outcome, not an error.
+  rpc RegisterLoan(RegisterLoanRequest) returns (RegisterLoanResponse);
+
+  // ValidateAvailability is a cheap read-only check used by catalog-service
+  // before it even attempts RegisterLoan (UI affordance, optimistic
+  // gating, etc.). Implementations may serve this from a cache.
+  rpc ValidateAvailability(ValidateAvailabilityRequest)
+      returns (ValidateAvailabilityResponse);
+
+  // RegisterReturn marks an existing loan as returned.
+  // Idempotent on loan_id: a second call for an already-returned loan
+  // returns status="already_returned" rather than erroring.
+  rpc RegisterReturn(RegisterReturnRequest) returns (RegisterReturnResponse);
+
+  // GetLoan is a small read helper for status checks / dashboards.
+  rpc GetLoan(GetLoanRequest) returns (GetLoanResponse);
+}
+
+// BookService is the bonus gRPC reverse-channel: it lets loan-service ask
+// catalog-service whether a book exists and is available, without going through
+// the HTTP round-trip. Mirrors GET /books/{id} in catalog-service.
+//
+// In the default config we use the HTTP equivalent (HTTPCatalogClient in
+// loan-service). Set CATALOG_TRANSPORT=grpc to switch.
+service BookService {
+  rpc BookExists(BookExistsRequest) returns (BookExistsResponse);
+}
+
+// ---- RegisterLoan ----
+message RegisterLoanRequest {
+  string book_id = 1;
+  string user_id = 2;
+  // Optional ISO-8601 due date. If empty, loan-service applies its default
+  // loan duration policy (e.g. +14 days).
+  string due_at = 3;
+  // Idempotency key from the caller. loan-service should dedupe on this
+  // within a 24h window to make at-least-once callers safe.
+  string idempotency_key = 4;
+}
+
+message RegisterLoanResponse {
+  string loan_id = 1;
+  // "active" | "rejected" | "already_active"
+  string status = 2;
+  string message = 3;
+  string borrowed_at = 4;
+  string due_at = 5;
+}
+
+// ---- ValidateAvailability ----
+message ValidateAvailabilityRequest {
+  string book_id = 1;
+}
+
+message ValidateAvailabilityResponse {
+  bool available = 1;
+  int32 active_loans_count = 2;
+  int32 total_copies = 3;
+}
+
+// ---- RegisterReturn ----
+message RegisterReturnRequest {
+  string loan_id = 1;
+  // Optional: caller-supplied return timestamp for reconciliation.
+  string returned_at = 2;
+}
+
+message RegisterReturnResponse {
+  string loan_id = 1;
+  // "returned" | "already_returned" | "not_found"
+  string status = 2;
+  string returned_at = 3;
+  string message = 4;
+}
+
+// ---- GetLoan ----
+message GetLoanRequest {
+  string loan_id = 1;
+}
+
+message GetLoanResponse {
+  string loan_id = 1;
+  string book_id = 2;
+  string user_id = 3;
+  // "active" | "returned"
+  string status = 4;
+  string loaned_at = 5;
+  string due_at = 6;
+  string returned_at = 7;
+}
+
+// ---- BookService (bonus reverse channel: B -> A) ----
+message BookExistsRequest {
+  string book_id = 1;
+}
+
+message BookExistsResponse {
+  bool exists = 1;
+  bool available = 2;
+  int32 available_stock = 3;
+  int32 total_stock = 4;
+}
