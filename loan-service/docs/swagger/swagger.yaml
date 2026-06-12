@@ -3,8 +3,8 @@ definitions:
   dto.CreateLoanRequest:
     properties:
       book_id:
-        description: BookID is the UUID of the book to borrow (validated by B against
-          Service A).
+        description: BookID is the UUID of the book to borrow (validated against
+          Catalog Service).
         example: 978-0-13-468599-1
         format: uuid
         type: string
@@ -86,16 +86,16 @@ host: localhost:8080
 info:
   contact: {}
   description: |-
-    Service B: registra préstamos, devoluciones, y valida con Service A que el libro existe y tiene stock. Expone HTTP y gRPC; Service A consume HTTP por default y gRPC como bonus.
+    Loan Service: registers loans and returns, validates book existence and stock with Catalog Service. Exposes HTTP and gRPC; Catalog Service consumes HTTP by default and gRPC as a bonus.
 
-    Reverse channel: B llama a A vía HTTP (`/books/:id`) o gRPC (`BookExists`) para verificar disponibilidad antes de registrar un préstamo.
-  title: Loan Service B — Préstamos
+    Reverse channel: Loan Service calls Catalog Service via HTTP (`/books/:id`) or gRPC (`BookExists`) to verify availability before registering a loan.
+  title: Loan Service
   version: "1.0"
 paths:
   /availability/{bookId}:
     get:
-      description: B calls Service A to confirm the book still exists and has stock.
-        This is the reverse channel used by the saga.
+      description: Loan Service calls Catalog Service to confirm the book still exists
+        and has stock. This is the reverse channel used by the saga.
       parameters:
       - description: Book UUID
         in: path
@@ -121,7 +121,7 @@ paths:
           description: catalog service unavailable
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
-      summary: Check book availability (B→A reverse channel)
+      summary: Check book availability (Loan→Catalog reverse channel)
       tags:
       - catalog
   /healthz:
@@ -205,7 +205,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Validates with Service A that the book exists and has stock, then
+      description: Validates with Catalog Service that the book exists and has stock, then
         persists the loan. Idempotent if `idempotency_key` is supplied.
       parameters:
       - description: Optional dedup key (also accepted in body)

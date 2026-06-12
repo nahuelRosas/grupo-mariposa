@@ -1,6 +1,6 @@
-// Prisma schema for Service A (Catalog, db_catalog).
+// Prisma schema for Catalog Service (db_catalog).
 // The Loan model is a *local shadow* of the loan; the source of truth
-// for loan state lives in Service B (db_loans). The local row lets
+// for loan state lives in Loan Service (db_loans). The local row lets
 // us enforce stock decrements atomically with the saga compensation.
 
 generator client {
@@ -59,7 +59,7 @@ model Book {
 
 model Loan {
   id           String   @id @default(uuid()) @db.Uuid
-  // remoteLoanId is set after Service B returns a loanId; null while PENDING.
+  // remoteLoanId is set after Loan Service returns a loanId; null while PENDING.
   remoteLoanId String?  @unique @map("remote_loan_id") @db.Uuid
   userId       String   @map("user_id") @db.Uuid
   bookId       String   @map("book_id") @db.Uuid

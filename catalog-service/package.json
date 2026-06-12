@@ -1,7 +1,7 @@
 {
   "name": "catalog-service",
   "version": "1.0.0",
-  "description": "Service A — Catalog (NestJS, hexagonal)",
+  "description": "Catalog Service (NestJS, hexagonal architecture)",
   "private": true,
   "scripts": {
     "build": "nest build && rm -f tsconfig.seed.tsbuildinfo && tsc -p tsconfig.seed.json && cp -r .seed-build/. dist/ && rm -rf .seed-build",

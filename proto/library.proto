@@ -132,7 +132,7 @@ message GetLoanResponse {
   string returned_at = 7;
 }
 
-// ---- BookService (bonus reverse channel: B -> A) ----
+// ---- BookService (bonus reverse channel: Loan Service -> Catalog Service) ----
 message BookExistsRequest {
   string book_id = 1;
 }

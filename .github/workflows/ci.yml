@@ -84,14 +84,14 @@ jobs:
             bash ./scripts/postgres-entrypoint.sh
           PGPASSWORD=library_dev_pw psql -h 127.0.0.1 -U library -d postgres -f /tmp/init.sql
 
-      - name: "Service B: install Go protoc plugins"
+      - name: "Loan Service: install Go protoc plugins"
         working-directory: loan-service
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
           echo "$HOME/go/bin" >> $GITHUB_PATH
 
-      - name: "Service B: generate proto"
+      - name: "Loan Service: generate proto"
         working-directory: loan-service
         run: |
           mkdir -p proto/gen
@@ -106,21 +106,21 @@ jobs:
       - name: "Format check"
         run: make format-check
 
-      - name: "Service B: go vet"
+      - name: "Loan Service: go vet"
         working-directory: loan-service
         run: go vet ./...
 
-      - name: "Service B: test"
+      - name: "Loan Service: test"
         run: make test-go
 
-      - name: "Service B: build"
+      - name: "Loan Service: build"
         working-directory: loan-service
         run: |
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/loan-service ./cmd/server
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/healthcheck ./cmd/healthcheck
           CGO_ENABLED=0 go build -tags 'postgres' -trimpath -ldflags="-s -w" -o bin/migrate ./cmd/migrate
 
-      - name: "Service B: apply migrations"
+      - name: "Loan Service: apply migrations"
         working-directory: loan-service
         env:
           DB_HOST: 127.0.0.1
@@ -132,37 +132,37 @@ jobs:
           MIGRATIONS_PATH: file://./migrations
         run: ./bin/migrate up
 
-      - name: "Service A: prisma generate"
+      - name: "Catalog Service: prisma generate"
         working-directory: catalog-service
         env:
           DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
         run: npx prisma generate
 
-      - name: "Service A: prisma migrate deploy"
+      - name: "Catalog Service: prisma migrate deploy"
         working-directory: catalog-service
         env:
           DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
         run: npx prisma migrate deploy
 
-      - name: "Service A: test"
+      - name: "Catalog Service: test"
         env:
           DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
           LOAN_SERVICE_URL: http://127.0.0.1:8080
           JWT_SECRET: ci-test-secret-32-bytes-minimum-please
         run: make test-node
 
-      - name: "Service A: e2e test"
+      - name: "Catalog Service: e2e test"
         env:
           DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
           LOAN_SERVICE_URL: http://127.0.0.1:8080
           JWT_SECRET: ci-test-secret-32-bytes-minimum-please
         run: make test-e2e
 
-      - name: "Service A: build"
+      - name: "Catalog Service: build"
         working-directory: catalog-service
         run: npm run build
 
-      - name: Upload Service A dist
+      - name: Upload Catalog Service dist
         uses: actions/upload-artifact@v4
         with:
           name: catalog-service-dist
@@ -170,7 +170,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-      - name: Upload Service B binaries
+      - name: Upload Loan Service binaries
         uses: actions/upload-artifact@v4
         with:
           name: loan-service-binaries

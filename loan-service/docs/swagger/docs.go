@@ -20,14 +20,14 @@ const docTemplate = `{
     "paths": {
         "/availability/{bookId}": {
             "get": {
-                "description": "B calls Service A to confirm the book still exists and has stock. This is the reverse channel used by the saga.",
+                "description": "Loan Service calls Catalog Service to confirm the book still exists and has stock. This is the reverse channel used by the saga.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "catalog"
                 ],
-                "summary": "Check book availability (B→A reverse channel)",
+                "summary": "Check book availability (Loan→Catalog reverse channel)",
                 "parameters": [
                     {
                         "type": "string",
@@ -179,7 +179,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Validates with Service A that the book exists and has stock, then persists the loan. Idempotent if ` + "`" + `idempotency_key` + "`" + ` is supplied.",
+                "description": "Validates with Catalog Service that the book exists and has stock, then persists the loan. Idempotent if ` + "`" + `idempotency_key` + "`" + ` is supplied.",
                 "consumes": [
                     "application/json"
                 ],
@@ -292,7 +292,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "book_id": {
-                    "description": "BookID is the UUID of the book to borrow (validated by B against Service A).",
+                    "description": "BookID is the UUID of the book to borrow (validated against Catalog Service).",
                     "type": "string",
                     "format": "uuid",
                     "example": "978-0-13-468599-1"
@@ -406,8 +406,8 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "localhost:8080",
 	BasePath:         "/",
 	Schemes:          []string{"http", "https"},
-	Title:            "Loan Service B — Préstamos",
-	Description:      "Service B: registra préstamos, devoluciones, y valida con Service A que el libro existe y tiene stock. Expone HTTP y gRPC; Service A consume HTTP por default y gRPC como bonus.\n\nReverse channel: B llama a A vía HTTP (`/books/:id`) o gRPC (`BookExists`) para verificar disponibilidad antes de registrar un préstamo.",
+	Title:            "Loan Service",
+	Description:      "Loan Service: registers loans and returns, validates book existence and stock with Catalog Service. Exposes HTTP and gRPC; Catalog Service consumes HTTP by default and gRPC as a bonus.\n\nReverse channel: Loan Service calls Catalog Service via HTTP (`/books/:id`) or gRPC (`BookExists`) to verify availability before registering a loan.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
