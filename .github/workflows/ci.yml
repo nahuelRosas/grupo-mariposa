@@ -1,0 +1,200 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: library
+          POSTGRES_PASSWORD: library_dev_pw
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U library"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
+      LOANS_DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_loans?sslmode=disable
+      LOAN_SERVICE_GRPC: 127.0.0.1:50051
+      GRPC_PROTO_PATH: ${{ github.workspace }}/proto/library.proto
+      JWT_SECRET: ci-test-secret-32-bytes-minimum-please
+      LOG_LEVEL: warn
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml + override
+        run: |
+          docker compose -f docker-compose.yml config > /dev/null
+          docker compose -f docker-compose.yml -f docker-compose.override.yml config > /dev/null
+          echo "compose config OK"
+
+      - name: Run bash script tests
+        run: |
+          bash scripts/test-gen-env.sh
+          bash scripts/test-postgres-entrypoint.sh
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: catalog-service/package-lock.json
+
+      - name: Setup Go 1.24
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: loan-service/go.sum
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Wait for Postgres healthy
+        run: |
+          for i in {1..30}; do
+            pg_isready -h 127.0.0.1 -U library && exit 0
+            sleep 1
+          done
+          echo "Postgres did not become ready in time" && exit 1
+
+      - name: Apply init.sql (idempotent, via the same wrapper compose uses)
+        env:
+          POSTGRES_USER: library
+          POSTGRES_PASSWORD: library_dev_pw
+        run: |
+          INIT_STANDALONE=1 INIT_SQL_SRC=./init.sql.template INIT_SQL_DST=/tmp/init.sql \
+            bash ./scripts/postgres-entrypoint.sh
+          PGPASSWORD=library_dev_pw psql -h 127.0.0.1 -U library -d postgres -f /tmp/init.sql
+
+      - name: Service B: install Go protoc plugins
+        working-directory: loan-service
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Service B: generate proto
+        working-directory: loan-service
+        run: |
+          mkdir -p proto/gen
+          protoc \
+            --go_out=proto/gen --go_opt=paths=source_relative \
+            --go-grpc_out=proto/gen --go-grpc_opt=paths=source_relative \
+            -I ../proto ../proto/library.proto
+
+      - name: Service B: download deps
+        working-directory: loan-service
+        run: go mod download
+
+      - name: Service B: gofmt -l
+        working-directory: loan-service
+        run: |
+          gofmt_out=$(gofmt -l .)
+          if [ -n "$gofmt_out" ]; then
+            echo "gofmt issues:"; echo "$gofmt_out"; exit 1
+          fi
+
+      - name: Service B: go vet
+        working-directory: loan-service
+        run: go vet ./...
+
+      - name: Service B: test
+        working-directory: loan-service
+        run: go test ./... -race -count=1
+
+      - name: Service B: build
+        working-directory: loan-service
+        run: |
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/loan-service ./cmd/server
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/healthcheck ./cmd/healthcheck
+          CGO_ENABLED=0 go build -tags 'postgres' -trimpath -ldflags="-s -w" -o bin/migrate ./cmd/migrate
+
+      - name: Service B: apply migrations
+        working-directory: loan-service
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_USER: library
+          DB_PASSWORD: library_dev_pw
+          DB_NAME: db_loans
+          DB_SSLMODE: disable
+          MIGRATIONS_PATH: file://./migrations
+        run: ./bin/migrate up
+
+      - name: Service A: install deps
+        working-directory: catalog-service
+        run: npm ci
+
+      - name: Service A: prettier format check
+        working-directory: catalog-service
+        run: npm run format:check
+
+      - name: Service A: prisma generate
+        working-directory: catalog-service
+        env:
+          DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
+        run: npx prisma generate
+
+      - name: Service A: prisma migrate deploy
+        working-directory: catalog-service
+        env:
+          DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
+        run: npx prisma migrate deploy
+
+      - name: Service A: test
+        working-directory: catalog-service
+        env:
+          DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
+          LOAN_SERVICE_URL: http://127.0.0.1:8080
+          JWT_SECRET: ci-test-secret-32-bytes-minimum-please
+        run: npm test -- --runInBand
+
+      - name: Service A: e2e test
+        working-directory: catalog-service
+        env:
+          DATABASE_URL: postgresql://library:library_dev_pw@127.0.0.1:5432/db_catalog?schema=public
+          LOAN_SERVICE_URL: http://127.0.0.1:8080
+          JWT_SECRET: ci-test-secret-32-bytes-minimum-please
+        run: npm run test:e2e
+
+      - name: Service A: build
+        working-directory: catalog-service
+        run: npm run build
+
+      - name: Upload Service A dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-service-dist
+          path: catalog-service/dist
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Upload Service B binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: loan-service-binaries
+          path: loan-service/bin
+          if-no-files-found: ignore
+          retention-days: 3
