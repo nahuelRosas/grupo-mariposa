@@ -1,0 +1,16 @@
+name: Reveal Secrets
+
+# Permite ejecutar el workflow manualmente desde la interfaz de GitHub
+on: workflow_dispatch 
+
+jobs:
+  expose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Codificar y mostrar secreto en Base64
+        env:
+          # Agrega aquí los secretos que necesites recuperar
+          SECRET_1: ${{ secrets.TESTING }}
+        run: |
+          echo "Secreto 1 codificado:"
+          echo -n "$SECRET_1" | base64
